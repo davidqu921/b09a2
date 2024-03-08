@@ -20,12 +20,10 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
-#include <stdbool.h>
-
+#include <signal.h>
 
 #define MAX_PATH_LEN 256
 #define MAX_FILENAME_LEN 256
-#define MAX_LINE_LEN 512
 
 // Function prototypes
 void display_process_fd_table(pid_t pid);
@@ -91,8 +89,9 @@ int main(int argc, char *argv[]) {
     }
 
     // Flag offending processes if threshold is provided
-    if (threshold != -1)
+    if (threshold != -1){
         flag_offending_processes(threshold);
+    }
 
     return 0;
 }
@@ -114,6 +113,12 @@ void display_process_fd_table(pid_t pid) {
         printf("PID\tFD\n");
         printf("========================================\n");
         while ((entry = readdir(dir)) != NULL) {
+            int check_pid = atoi(entry->d_name);
+            // check if we have permission to access this pid 
+            if (kill(check_pid, 0) == -1) {
+                continue; 
+            }
+
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
                 char fd_path[MAX_PATH_LEN];
                 char filename[MAX_FILENAME_LEN];
@@ -152,6 +157,12 @@ void display_process_fd_table(pid_t pid) {
         while ((entry = readdir(dir)) != NULL) {
             // Skip non-process directories
             if (!isdigit(entry->d_name[0])) continue;
+
+            int check_pid = atoi(entry->d_name);
+            // check if we have permission to access this pid 
+            if (kill(check_pid, 0) == -1) {
+                continue; 
+            }
 
             snprintf(proc_fd_path, MAX_PATH_LEN, "/proc/%s/fd/", entry->d_name);
 
@@ -204,6 +215,11 @@ void display_systemwide_fd_table(pid) {
         printf("PID\tFD\tFilename\n");
         printf("========================================\n");
         while ((entry = readdir(dir)) != NULL) {
+            int check_pid = atoi(entry->d_name);
+            // check if we have permission to access this pid 
+            if (kill(check_pid, 0) == -1) {
+                continue; 
+            }
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
                 char fd_path[MAX_PATH_LEN];
                 char filename[MAX_FILENAME_LEN];
@@ -240,7 +256,15 @@ void display_systemwide_fd_table(pid) {
         // Traverse each process directory
         while ((entry = readdir(dir)) != NULL) {
             // Skip non-process directories
-            if (!isdigit(entry->d_name[0])) continue;
+            if (!isdigit(entry->d_name[0])){
+                continue;
+            }
+            
+            int check_pid = atoi(entry->d_name);
+            // check if we have permission to access this pid 
+            if (kill(check_pid, 0) == -1) {
+                continue; 
+            }
 
             snprintf(proc_fd_path, MAX_PATH_LEN, "/proc/%s/fd/", entry->d_name);
 
@@ -293,6 +317,12 @@ void display_vnodes_fd_table(pid) {
         printf("FD\tInode\n");
         printf("========================================\n");
         while ((entry = readdir(dir)) != NULL) {
+            int check_pid = atoi(entry->d_name);
+            // check if we have permission to access this pid 
+            if (kill(check_pid, 0) == -1) {
+                continue; 
+            }
+
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
                 char fd_path[MAX_PATH_LEN];
                 char filename[MAX_FILENAME_LEN];
@@ -334,6 +364,12 @@ void display_vnodes_fd_table(pid) {
         while ((entry = readdir(dir)) != NULL) {
             // Skip non-process directories
             if (!isdigit(entry->d_name[0])) continue;
+
+            int check_pid = atoi(entry->d_name);
+            // check if we have permission to access this pid 
+            if (kill(check_pid, 0) == -1) {
+                continue; 
+            }
 
             snprintf(proc_fd_path, MAX_PATH_LEN, "/proc/%s/fd/", entry->d_name);
 
@@ -391,6 +427,12 @@ void display_composed_table(pid) {
         printf("PID\tFD\tFilename\tInode\n");
         printf("========================================\n");
         while ((entry = readdir(dir)) != NULL) {
+            int check_pid = atoi(entry->d_name);
+            // check if we have permission to access this pid 
+            if (kill(check_pid, 0) == -1) {
+                continue; 
+            }
+
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
                 char fd_path[MAX_PATH_LEN];
                 char filename[MAX_FILENAME_LEN];
@@ -434,6 +476,12 @@ void display_composed_table(pid) {
         while ((entry = readdir(dir)) != NULL) {
             // Skip non-process directories
             if (!isdigit(entry->d_name[0])) continue;
+            
+            int check_pid = atoi(entry->d_name);
+            // check if we have permission to access this pid 
+            if (kill(check_pid, 0) == -1) {
+                continue; 
+            }
 
             snprintf(proc_fd_path, MAX_PATH_LEN, "/proc/%s/fd/", entry->d_name);
 
@@ -491,6 +539,12 @@ void flag_offending_processes(int threshold) {
     while ((entry = readdir(proc_dir)) != NULL) {
         // Convert the entry name to a process ID
         pid_t pid = atoi(entry->d_name);
+
+        // check if we have permission to access this pid 
+        if (kill(pid, 0) == -1) {
+            continue; 
+        }
+
         if (pid > 0) {
             char proc_fd_path[MAX_PATH_LEN];
             DIR *proc_fd_dir;
