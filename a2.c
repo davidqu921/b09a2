@@ -25,6 +25,7 @@
 
 #define MAX_PATH_LEN 256
 #define MAX_FILENAME_LEN 256
+#define MAX_LINE_LEN 256
 
 // Function prototypes
 void display_process_fd_table(pid_t pid);
@@ -108,7 +109,7 @@ int main(int argc, char *argv[]) {
         save_composite_table_text("compositeTable.txt",pid);
     }
     if (save_binary){
-        save_composite_table_binary("compositeTable.txt",pid);
+        save_composite_table_binary("compositeTable.bin",pid);
     }
 
 
@@ -592,7 +593,7 @@ void save_composite_table_text(const char *filename, pid_t pid) {
     dup2(fileno(file), STDOUT_FILENO);
 
     // Display the composite table
-    display_process_fd_table(pid);
+    display_composed_table(pid);
 
     // Close the file
     fclose(file);
@@ -605,13 +606,26 @@ void save_composite_table_binary(const char *filename, pid_t pid) {
         exit(EXIT_FAILURE);
     }
 
-    // Redirect stdout to the file
-    dup2(fileno(file), STDOUT_FILENO);
+    char command[MAX_LINE_LEN];
 
-    // Display the composite table
-    display_process_fd_table(pid);
+    snprintf(command, sizeof(command), "./showFDtables %d --composite", pid);
 
-    // Close the file
+    // Use pipe to capture stdout
+    FILE *pipe = popen(command, "r");
+    if (pipe == NULL){
+        perror("Error opening pipe");
+        exit(EXIT_FAILURE);
+    }
+
+
+    char buffer[MAX_LINE_LEN];
+    size_t byte_read;
+
+    while ((byte_read = fread(buffer, sizeof(char),sizeof(buffer),pipe)) != 0){
+        fwrite(buffer, sizeof(char), strlen(buffer), file);
+    }
+
+    pclose(pipe);
     fclose(file);
 }
 
