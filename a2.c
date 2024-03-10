@@ -21,22 +21,26 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <ctype.h>
 
 #define MAX_PATH_LEN 256
 #define MAX_FILENAME_LEN 256
 
 // Function prototypes
 void display_process_fd_table(pid_t pid);
-void display_systemwide_fd_table();
-void display_vnodes_fd_table();
-void display_composed_table();
+void display_systemwide_fd_table(pid_t pid);
+void display_vnodes_fd_table(pid_t pid);
+void display_composed_table(pid_t pid);
 void flag_offending_processes(int threshold);
 void display_usage();
 int isPid(char* string);
+void save_composite_table_text(const char *filename, pid_t pid);
+void save_composite_table_binary(const char *filename, pid_t pid);
+
 
 int main(int argc, char *argv[]) {
     // Parse command-line arguments
-    int per_process = 0, system_wide = 0, vnodes = 0, composite = 0;
+    int per_process = 0, system_wide = 0, vnodes = 0, composite = 0, save_text = 0, save_binary = 0;
     int threshold = -1;
     pid_t pid = -1;
 
@@ -56,11 +60,17 @@ int main(int argc, char *argv[]) {
         else if (strncmp(argv[i], "--threshold=", 12) == 0){
             int lenOfNum = strlen(argv[i]) - 12;
             char num[lenOfNum+1];
-            strncpy(num,argv[i][12],lenOfNum+1);
-            threshold = atio(num);
+            strncpy(num,argv[i]+12,lenOfNum+1);
+            threshold = atoi(num);
         }
-        else if (isPid(argv[i])!=0){
+        else if (isPid(argv[i])){
             pid = atoi(argv[i]);
+        }
+        else if (strcmp(argv[i], "--output_TXT") == 0){
+            save_text = 1;
+        }
+        else if(strcmp(argv[i], "--output_binary") == 0){
+            save_binary = 1;
         }
         else{
             printf("Unknown argument: %s\n", argv[i]);
@@ -70,7 +80,7 @@ int main(int argc, char *argv[]) {
     }
 
     // Default behavior
-    if (!(per_process || system_wide || vnodes || composite)){
+    if (!(per_process || system_wide || vnodes || composite || save_text || save_binary)){
         composite = 1;
     }
 
@@ -93,6 +103,17 @@ int main(int argc, char *argv[]) {
         flag_offending_processes(threshold);
     }
 
+    // output the stdout as a text file or binary file
+    if (save_text){
+        save_composite_table_text("compositeTable.txt",pid);
+    }
+    if (save_binary){
+        save_composite_table_binary("compositeTable.txt",pid);
+    }
+
+
+    printf("\n*******Program Terminated Successfuly!*******\n");
+
     return 0;
 }
 
@@ -101,8 +122,10 @@ void display_process_fd_table(pid_t pid) {
     DIR *dir;
     struct dirent *entry;
 
+    printf("PID\tFD\n");
+    printf("========================================\n");
 
-    if(pid!=-1){ // PID is specified
+    if(pid!=-1 && kill(pid, 0) != -1){ // PID is specified
         snprintf(proc_fd_path, MAX_PATH_LEN, "/proc/%d/fd", pid);
         dir = opendir(proc_fd_path);
         if (dir == NULL) {
@@ -110,15 +133,7 @@ void display_process_fd_table(pid_t pid) {
             exit(EXIT_FAILURE);
         }
 
-        printf("PID\tFD\n");
-        printf("========================================\n");
         while ((entry = readdir(dir)) != NULL) {
-            int check_pid = atoi(entry->d_name);
-            // check if we have permission to access this pid 
-            if (kill(check_pid, 0) == -1) {
-                continue; 
-            }
-
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
                 char fd_path[MAX_PATH_LEN];
                 char filename[MAX_FILENAME_LEN];
@@ -150,9 +165,6 @@ void display_process_fd_table(pid_t pid) {
             exit(EXIT_FAILURE);
         }
 
-        printf("PID\tFD\n");
-        printf("========================================\n");
-
         // Traverse each process directory
         while ((entry = readdir(dir)) != NULL) {
             // Skip non-process directories
@@ -183,7 +195,7 @@ void display_process_fd_table(pid_t pid) {
                     ssize_t len = readlink(fd_path, linkname, bufsize - 1);
                     if (len != -1) {
                         linkname[len] = '\0'; // Null-terminate the string
-                        printf("%d\t%s\n", entry->d_name, fd_entry->d_name);
+                        printf("%s\t%s\n", entry->d_name, fd_entry->d_name);
                     }
                     else {
                     perror("Error reading link\n");
@@ -197,14 +209,17 @@ void display_process_fd_table(pid_t pid) {
     printf("========================================\n");
 }
 
-void display_systemwide_fd_table(pid) {
+void display_systemwide_fd_table(pid_t pid) {
     // Implement system-wide FD table display
     char proc_fd_path[MAX_PATH_LEN];
     DIR *dir;
     struct dirent *entry;
 
+    printf("PID\tFD\tFilename\n");
+    printf("========================================\n");
 
-    if (pid!=-1){
+
+    if (pid!=-1 && kill(pid, 0) != -1){
         snprintf(proc_fd_path, MAX_PATH_LEN, "/proc/%d/fd", pid);
         dir = opendir(proc_fd_path);
         if (dir == NULL) {
@@ -212,14 +227,8 @@ void display_systemwide_fd_table(pid) {
             exit(EXIT_FAILURE);
         }
 
-        printf("PID\tFD\tFilename\n");
-        printf("========================================\n");
         while ((entry = readdir(dir)) != NULL) {
-            int check_pid = atoi(entry->d_name);
-            // check if we have permission to access this pid 
-            if (kill(check_pid, 0) == -1) {
-                continue; 
-            }
+ 
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
                 char fd_path[MAX_PATH_LEN];
                 char filename[MAX_FILENAME_LEN];
@@ -251,8 +260,6 @@ void display_systemwide_fd_table(pid) {
             exit(EXIT_FAILURE);
         }
 
-        printf("PID\tFD\tFilename\n");
-        printf("========================================\n");
         // Traverse each process directory
         while ((entry = readdir(dir)) != NULL) {
             // Skip non-process directories
@@ -286,7 +293,7 @@ void display_systemwide_fd_table(pid) {
                     ssize_t len = readlink(fd_path, linkname, bufsize - 1);
                     if (len != -1) {
                         linkname[len] = '\0'; // Null-terminate the string
-                        printf("%d\t%s\t%s\n", entry->d_name, fd_entry->d_name, linkname);
+                        printf("%s\t%s\t%s\n", entry->d_name, fd_entry->d_name, linkname);
                     }
                     else {
                         perror("Error reading link\n");
@@ -300,13 +307,16 @@ void display_systemwide_fd_table(pid) {
     printf("========================================\n");
 }
 
-void display_vnodes_fd_table(pid) {
+void display_vnodes_fd_table(pid_t pid) {
     // Implement Vnodes FD table display
         DIR *dir;
     struct dirent *entry;
     char proc_fd_path[MAX_PATH_LEN];
+
+    printf("FD\tInode\n");
+    printf("========================================\n");
     
-    if(pid != -1){
+    if(pid != -1 && kill(pid, 0) != -1){
         snprintf(proc_fd_path, MAX_PATH_LEN, "/proc/%d/fd", pid);
         dir = opendir(proc_fd_path);
         if (dir == NULL) {
@@ -314,14 +324,8 @@ void display_vnodes_fd_table(pid) {
             exit(EXIT_FAILURE);
         }
 
-        printf("FD\tInode\n");
-        printf("========================================\n");
+
         while ((entry = readdir(dir)) != NULL) {
-            int check_pid = atoi(entry->d_name);
-            // check if we have permission to access this pid 
-            if (kill(check_pid, 0) == -1) {
-                continue; 
-            }
 
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
                 char fd_path[MAX_PATH_LEN];
@@ -334,7 +338,7 @@ void display_vnodes_fd_table(pid) {
                     // Get inode of the file
                         struct stat statbuf;
                         if (lstat(filename, &statbuf) != -1) {
-                            printf("%s\t%lu\n", entry->d_name, statbuf.st_ino);
+                            printf("%d\t%lu\n", pid, statbuf.st_ino);
                         }
                 } 
                 else {
@@ -358,8 +362,6 @@ void display_vnodes_fd_table(pid) {
             exit(EXIT_FAILURE);
         }
 
-        printf("FD\tInode\n");
-        printf("========================================\n");
         // Traverse each process directory
         while ((entry = readdir(dir)) != NULL) {
             // Skip non-process directories
@@ -411,12 +413,15 @@ void display_vnodes_fd_table(pid) {
     printf("========================================\n");
 }
 
-void display_composed_table(pid) {
+void display_composed_table(pid_t pid) {
     DIR *dir;
     struct dirent *entry;
     char proc_fd_path[MAX_PATH_LEN];
+
+    printf("PID\tFD\tFilename\tInode\n");
+    printf("========================================\n");
     
-    if(pid != -1){
+    if(pid != -1 && kill(pid, 0) != -1){
         snprintf(proc_fd_path, MAX_PATH_LEN, "/proc/%d/fd", pid);
         dir = opendir(proc_fd_path);
         if (dir == NULL) {
@@ -424,14 +429,7 @@ void display_composed_table(pid) {
             exit(EXIT_FAILURE);
         }
 
-        printf("PID\tFD\tFilename\tInode\n");
-        printf("========================================\n");
         while ((entry = readdir(dir)) != NULL) {
-            int check_pid = atoi(entry->d_name);
-            // check if we have permission to access this pid 
-            if (kill(check_pid, 0) == -1) {
-                continue; 
-            }
 
             if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
                 char fd_path[MAX_PATH_LEN];
@@ -444,7 +442,7 @@ void display_composed_table(pid) {
                     // Get inode of the file
                         struct stat statbuf;
                         if (lstat(filename, &statbuf) != -1) {
-                            printf("%s\t%s\t%s\t%lu\n", pid, entry->d_name, filename, statbuf.st_ino);
+                            printf("%d\t%s\t%s\t%lu\n", pid, entry->d_name, filename, statbuf.st_ino);
                         }
                 } 
                 else {
@@ -470,8 +468,6 @@ void display_composed_table(pid) {
             exit(EXIT_FAILURE);
         }
 
-        printf("PID\tFD\tFilename\tInode\n");
-        printf("========================================\n");
         // Traverse each process directory
         while ((entry = readdir(dir)) != NULL) {
             // Skip non-process directories
@@ -566,23 +562,59 @@ void flag_offending_processes(int threshold) {
                 }
 
                 closedir(proc_fd_dir);
-            } else {
-                perror("Error opening process directory\n");
-            }
+            } 
+            //else {
+            //    perror("Error opening process FD directory\n");
+            //}
         }
     }
-
     closedir(proc_dir);
-
 }
 
-int isPid(char* string){
+int isPid(char *string){
     int res = 1;
     for (int i=0; string[i]!='\0';i++){
-        res = res * isdigit(string[i]);
+        if (!isdigit(string[i])){
+            res = 0;
+        }
     }
     return res;
 }
+
+void save_composite_table_text(const char *filename, pid_t pid) {
+    FILE *file = fopen(filename, "w");
+    if (file == NULL) {
+        perror("Error opening file for writing");
+        exit(EXIT_FAILURE);
+    }
+
+    // Redirect stdout to the file
+    dup2(fileno(file), STDOUT_FILENO);
+
+    // Display the composite table
+    display_process_fd_table(pid);
+
+    // Close the file
+    fclose(file);
+}
+
+void save_composite_table_binary(const char *filename, pid_t pid) {
+    FILE *file = fopen(filename, "wb");
+    if (file == NULL) {
+        perror("Error opening file for writing");
+        exit(EXIT_FAILURE);
+    }
+
+    // Redirect stdout to the file
+    dup2(fileno(file), STDOUT_FILENO);
+
+    // Display the composite table
+    display_process_fd_table(pid);
+
+    // Close the file
+    fclose(file);
+}
+
 
 void display_usage(){
     printf("Usage: ./program_name [PID] [--per-process] [--systemWide] [--Vnodes] [--composite] [--threshold=X]\n");
